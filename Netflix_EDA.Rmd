@@ -1,0 +1,314 @@
+---
+title: "netflix_EDA"
+author: "Group 6"
+date: "4/28/2021"
+output: pdf_document
+---
+
+# Loding packages and checking loading
+```{r loadPackages, message=FALSE, warning=FALSE, messages=FALSE, results='hide'}
+pacman::p_load(tinytex, tidyverse, 
+               gplots, mlbench, data.table,ggplot2,tydiverse,mlbench,gridExtra,
+               tm,wordcloud,SnowballC,CRAN,word2vec,doc2vec,clue)
+theme_set(theme_classic())
+```
+
+# Importing the Data and cleaning the Data 
+```{r import data}
+netflix_input <- read.csv("netflix_titles.csv",header=T,na.strings = 
+                            c(""," ","NA"))
+
+netflixDt <- netflix_input[,-c(1,4)]
+summary(netflixDt)
+colSums(is.na(netflixDt))
+
+netflix.nona <- netflixDt[complete.cases(netflixDt),]
+colSums(is.na(netflix.nona))
+summary(netflix.nona)
+```
+
+# Plot to show No of movies and Tv shows from the Data 
+```{r barplot}
+count <- table(netflix_input$type)
+count
+#barplot(count, col = "orangered", horiz = FALSE, border = TRUE, space = 1)
+
+ggplot(netflix_input) + 
+  geom_bar(aes(y = type),  
+           width =.4, fill="seagreen") +
+  coord_flip() +
+  ylab("Type") +
+  xlab("count of Type of Content")
+  ggtitle("Type of Content on Netflix")
+
+pc1 <- round(count/sum(count)*100)
+lbls <- names(count)
+lbls <- paste(lbls, pc1) # add percents to labels
+lbls <- paste(lbls,"%",sep="") # ad % to labels
+
+pie(pc1, col = c("Blue","Red"),labels = lbls)
+
+```
+
+
+
+# Trends of Movies VS Shows in years and Months 
+```{r splitting the date added}
+library(lubridate)
+#netflix.nona$year_added <- unlist(lapply(netflix.nona$date_added,function(x) {
+ #                 strsplit(trimws(x), split = " ")[[1]][3]}))
+#netflix.nona$month_added <- unlist(lapply(netflix.nona$date_added,function(x) {
+ #                 strsplit(trimws(x), split = " ")[[1]][1]}))
+
+netflix.nona$month_added<-month(as.POSIXlt(netflix.nona$date_added, 
+                                           format="%d-%b-%y"))
+netflix.nona$year_added<-year(as.POSIXlt(netflix.nona$date_added, 
+                                         format="%d-%b-%y"))
+netflix.dt <- setDT(netflix.nona)
+Year.dt <- netflix.dt[ ,.N,by = .(type,year_added)]
+ggplot( Year.dt ,aes(x = year_added, y = N)) + 
+  geom_bar(aes(fill = type), stat = "Identity", position = "dodge") +
+  ggtitle("Trend Movies VS shows during Years")
+netflixmonth.nona<-netflix.nona[complete.cases(netflix.nona),]
+Month.dt <- netflixmonth.nona[ ,.N,by = .(type,month_added)]
+Month.dt$month_added <- factor(Month.dt$month_added)
+                             
+ggplot( Month.dt ,aes(x = month_added, y = N)) + 
+  geom_bar(aes(fill = type), 
+         stat = "Identity", position = "dodge")+
+  
+  ggtitle("Trend Movies VS shows during months")
+
+```
+
+
+
+# Movies and TV shows and thier Release year 
+```{r release date}
+Movies.dt <- netflix.dt[type == "Movie",.N,by = .(release_year)]
+TVshow.dt <- netflix.dt[type == "TV Show",.N,by = .(release_year)]
+head(Movies.dt,10)
+head(TVshow.dt,10)
+ggplot() +
+  geom_line(data = Movies.dt ,aes(x = release_year, y = N), color = "red", 
+            
+          alpha = 0.4) +
+  
+   geom_line(data =TVshow.dt,  aes(x = release_year, y = N), color = "blue", 
+             alpha = 0.4) +
+  ggtitle("Trends in Years")
+
+
+
+```
+
+# Same as above 
+
+```{r release year most movies or TV shows }
+
+Movies_highest <- head(Movies.dt[order(-N),],15)
+
+Movies_highest$release_year <- factor(Movies_highest$release_year,
+                      levels=unique(as.character(Movies_highest$release_year)))
+
+#colourCount = length(unique(Movies_highest$release_year))
+#getPalette = colorRampPalette(brewer.pal(9, "Set1"))
+#ggplot(Movies_highest) + 
+#geom_bar(aes(y= N, x = reorder(release_year,N),fill=release_year), 
+#stat = "identity") 
+#+scale_fill_manual(values = colorRampPalette
+#(brewer.pal(18, #"Blues"))(colourCount)) +
+ # coord_flip() + 
+#ggtitle("ANALYSIS ON RELEASE YEAR OF MOVIES")
+Movies_highest
+ggplot(Movies_highest) + 
+geom_bar(aes(y= N, x = reorder(release_year,N)), stat = "identity"
+      ,fill = "wheat", color = "brown2")+
+  coord_flip() + 
+ggtitle("ANALYSIS ON RELEASE YEAR OF MOVIES")
+head(TVshow.dt, 20)
+TVSeries_highest <- head(TVshow.dt[order(-N)],15)
+TVSeries_highest
+
+TVSeries_highest$release_year <- factor(TVSeries_highest$release_year,
+                                        levels=unique(as.character(
+                                          TVSeries_highest$release_year)))
+
+ggplot(TVSeries_highest ) + 
+geom_bar(aes(y= N , x = reorder(release_year,N)), stat = "identity", 
+         fill = "wheat", color = "brown2") +
+  coord_flip() +
+ggtitle("ANALYSIS ON RELEASE YEAR OF TV Shows")
+
+```
+
+
+#Duration of the movies and TV shows 
+```{r Duration}
+movies_df <- netflix.dt[type == "Movie",]
+TVshow_df <- netflix.dt[type == "TV Show",]
+movies_duration <- unlist(lapply(movies_df$duration,function(x) {
+                  strsplit(x, split = " ")[[1]][1]}))
+class(movies_duration)
+movies_duration_num <- as.numeric(movies_duration)
+
+hist(movies_duration_num, col = "seagreen", breaks = 50 ,
+     main= "Duration of the Movies", xlab = "Duration")
+
+TVshow_duration <- unlist(lapply(TVshow_df$duration,function(x) {
+                  strsplit(x, split = " ")[[1]][1]}))
+class(TVshow_duration)
+TVshow_duration_num <- as.numeric(TVshow_duration)
+hist(TVshow_duration_num,col = "orange",xlim = range(0,10),
+     main = "Duration of TV shows ", xlab = "Duration")
+
+
+
+```
+
+# countires producing more content
+
+```{r country}
+netflix.dt.country <- netflix.dt$country
+head(netflix.dt.country,10)
+class(netflix.dt.country)
+vec1 <- paste(as.vector(netflix.dt.country), collapse = "," )
+vec2 <- gsub(", ",",", vec1)
+countrylist <- gsub(" ,",",", vec2)
+
+
+words.freq<-table(unlist(str_split(countrylist,",")))
+head(words.freq)
+WF <-   words.freq %>% 
+        as.data.frame() %>% 
+        arrange(desc(Freq))
+highest <- head(WF, 20)
+
+ggplot(highest) + 
+  geom_bar(aes(x= reorder(Var1, -Freq),y = Freq) ,stat = "identity",
+           width =.4, fill="seagreen") + 
+  ylab("frequency of occurance") +
+  xlab("Countries") +
+  ggtitle("Top 20 countries with most content")
+
+```
+
+
+
+# Identify the popular content in each country
+```{r}
+movies_df <- netflix.dt[type == "Movie",]
+TVshow_df <- netflix.dt[type == "TV Show",]
+netflix.dt.country.movies <- movies_df$country
+netflix.dt.country.TVseries <- TVshow_df$country
+vector1 <- paste(as.vector(netflix.dt.country.movies), collapse = "," )
+vector2 <- gsub(", ",",", vector1)
+country1 <- gsub(" ,",",", vector2)
+
+
+words.frequency<-table(unlist(str_split(country1,",")))
+
+C1 <-   words.frequency %>% 
+        as.data.frame() %>% 
+        arrange(desc(Freq))
+top <- head(C1, 20)
+
+ggplot(top) + 
+  geom_bar(aes(x= reorder(Var1, -Freq),y = Freq) ,stat = "identity",
+           width =.4, fill="seagreen") + 
+  ylab("frequency of occurance") +
+  xlab("Countries") +
+  ggtitle("Top 20 countries with most movies")
+##############
+a1 <- paste(as.vector(netflix.dt.country.TVseries), collapse = "," )
+a2 <- gsub(", ",",", a1)
+country2 <- gsub(" ,",",", a2)
+
+
+count1<-table(unlist(str_split(country2,",")))
+
+C2 <-   count1 %>% 
+        as.data.frame() %>% 
+        arrange(desc(Freq))
+first <- head(C2, 20)
+
+ggplot(first) + 
+  geom_bar(aes(x= reorder(Var1, -Freq),y = Freq) ,stat = "identity",
+           width =.4, fill="seagreen") + 
+  ylab("frequency of occurance") +
+  xlab("Countries") +
+  ggtitle("Top 20 countries with most movies")
+
+
+
+#mWorldMap(highest, key = "Var1", fill = "Freq") + coord_map() + 
+ # scale_fill_continuous(name = "Content")
+```
+
+
+
+```{r text analytics}
+movies_df <- netflix.dt[type == "Movie",]
+Netflix.text <- movies_df[,c("title", "listed_in", "description")]
+colSums(is.na(Netflix.text))
+##docs<-corpus(netflix.text, text_field="description")
+docs <-  VCorpus(VectorSource(Netflix.text$description))
+
+docs=tm_map(docs,tolower)
+mystop <- c("â","€", "™") 
+docs=tm_map(docs,removeNumbers)
+docs=tm_map(docs,removePunctuation)
+docs=tm_map(docs,removeWords, c(stopwords("english"),mystop))
+docs=tm_map(docs,stripWhitespace)
+docs=tm_map(docs,stemDocument)
+docs=tm_map(docs,PlainTextDocument)
+
+
+
+dtm=DocumentTermMatrix(docs)
+dim(dtm)
+dtm=removeSparseTerms(dtm,0.99)
+dim(dtm)
+
+
+freq=colSums(as.matrix(dtm))
+ord=order(-freq) #Descending order - Default ascending order
+freq[tail(ord)] #Head of the object
+freq[head(ord)] #Tail of the object
+findFreqTerms(dtm,100) #Words occured atleast 100 times
+findAssocs(dtm, "love", corlimit=0.9) # word with high relation to love
+#Word cloud
+wordcloud(names(freq), freq, max.words=70, scale=c(3, .5),colors=brewer.pal(6,
+"Dark2")) #visual portrayal can be produced - wordclouds & bar chart
+
+```
+
+
+```{r k means}
+# converts the corpus to dataframe 
+df_corpus<-data.frame(text=unlist(sapply(docs, `[`, "content")), 
+    stringsAsFactors=F)
+
+
+df_corpus$doc_id <- 1:nrow(df_corpus)# to add doc_id so that dataframe can be 
+#used in doc2vector
+dim(df_corpus)
+
+is.data.frame(df_corpus)
+model <-word2vec(x =sentences,type ="cbow",iter =20)
+model <- paragraph2vec(x =df_corpus,type ="PV-DBOW",dim =150,iter =10,
+                       min_count =3,lr =0.05,threads =2)
+embeddings <-  as.matrix(model,which ="words")
+embeddings <-  as.matrix(model,which ="docs")
+dim(embeddings)
+
+km <- kmeans(embeddings, 49)
+summary(km)
+#fitted(km)
+clusterId <- cl_predict(km,embeddings)
+clusterId <- as.vector(clusterId)
+class(clusterId)
+Netflix.text$clusterId <- clusterId
+similarity <- Netflix.text[ clusterId ==10,]
+
+```
