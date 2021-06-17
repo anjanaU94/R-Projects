@@ -1,0 +1,182 @@
+---
+title: "BUAN6356_Homework4_UdayakumarA"
+author: "Anjana"
+date: "4/20/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r Load packages}
+library(ISLR)
+library(ggplot2)
+library(leaps)
+library(rpart)
+library(caret)
+library(rpart.plot)
+library(tree)
+library(gbm)
+library(randomForest)
+library(tinytex)
+tinytex::tlmgr_install("pdfcrop")
+Sys.setenv(R_GSCMD="C:/Program Files/gs/gs9.53.3/bin/gswin32c.exe")
+```
+
+
+```{r question 1}
+#Question 1
+str(Hitters)
+is.na(Hitters$Salary)
+data <-Hitters
+data.nona<- data[complete.cases(data[,19]),]
+str(data.nona)
+```
+1)59 Observations were removed by removing the observations with no salary 
+record
+
+```{r Log transformation of salary}
+#Question:2
+data.nona$Salary <- log(data.nona$Salary)
+str(data.nona)
+```
+2)Logarithmic transformations are carried out to normalize a highly skewed data variable.
+
+
+```{r Scatter plot}
+#Question 3
+scatter_plot <- ggplot(data.nona,aes(y=Hits,x=Years,color =(Salary)))+geom_point(alpha =0.6)
+scatter_plot
+```
+3)From the plot we notice that the log salaries become higher as the number of 
+years increase.
+
+
+```{r linear regression}
+#Question 4
+hitters.lm <- lm(Salary~.,data=data.nona)
+summary(hitters.lm)
+search <- regsubsets(Salary~.,data=data.nona,nbest=1,
+                     nvmax=dim(data.nona)[2],method="exhaustive")
+sum <- summary(search)
+sum$which
+sum$rsq
+sum$adjr2
+sum$bic
+```
+4)The 3rd model gives us the lowest BIC hence that is considered to be the best
+subset.The predictor variables included in the best model are Hits,Walks and 
+years.
+
+```{r data partition}
+#Question 5
+set.seed(42)
+train.index <- sample(c(1:263),210)
+train.df <- data.nona[train.index,]
+valid.df <- data.nona[-train.index,]
+```
+
+
+```{r tree}
+#Question 6
+#using tree package
+tree.hitters <- tree(Salary~Hits+Years,data.nona,subset = train.index)
+summary(tree.hitters)
+plot(tree.hitters)
+text(tree.hitters,pretty = 0)
+#using rpart package
+reg_tree <- rpart(Salary~Hits+Years,data = train.df,method ="anova")
+prp(reg_tree, type = 1, extra = 1, under = TRUE, roundint = FALSE, 
+    split.font = 2, varlen = -10, box.palette = "BuOr")
+rpart.rules(reg_tree, cover = TRUE)
+```
+6)When the player has more than or equal to 4.5 years of experience and hits 
+more than or equal to  104 he gets high salary
+
+```{r regression tree}
+#Question 7
+reg_tree_all <- rpart(Salary~.,data=train.df,method="anova")
+prp(reg_tree_all, type = 1, extra = 1, under = TRUE, roundint = FALSE, 
+    split.font = 2, varlen = -10, box.palette = "BuOr")
+rpart.rules(reg_tree_all, cover = TRUE)
+
+boost.hitters1 <- gbm(Salary~.,data = train.df,distribution = "gaussian",
+                      shrinkage = 0.2,n.trees = 1000,interaction.depth = 4)
+summary(boost.hitters1)
+boost.hitters2 <- gbm(Salary~.,data = train.df,distribution = "gaussian",
+                      shrinkage = 0.4,n.trees = 1000,interaction.depth = 4)
+summary(boost.hitters2)
+boost.hitters3 <- gbm(Salary~.,data = train.df,distribution = "gaussian",
+                      shrinkage = 0.6,n.trees = 1000,interaction.depth = 4)
+summary(boost.hitters3)
+boost.hitters4 <- gbm(Salary~.,data = train.df,distribution = "gaussian",
+                      shrinkage = 0.01,n.trees = 1000,interaction.depth = 4)
+summary(boost.hitters4)
+boost.hitters5 <- gbm(Salary~.,data = train.df,distribution = "gaussian",
+                      shrinkage = 0.02,n.trees = 1000,interaction.depth = 4)
+summary(boost.hitters5)
+
+
+MSE_train <- c(boost.hitters1$train.error[1000],boost.hitters2$train.error[1000]
+              ,boost.hitters3$train.error[1000],boost.hitters4$train.error[1000]
+              ,boost.hitters5$train.error[1000])
+MSE_train
+Shrinkage_values <- c(0.2,0.4,0.6,0.01,0.02)
+plot(Shrinkage_values,MSE_train,xlab = "Different Shrinkage Values",ylab =
+       "Training Mean Square Errors",main = "Train MSE and the shrinkage values"
+     )
+```
+
+
+```{r Test MSE Plot }
+#Question 8
+Shrinkage_values <- c(0.2,0.4,0.6,0.01,0.02)
+hitter.test <- data.nona[-train.index,"Salary"]
+yhat.boost1 <- predict(boost.hitters1,newdata = valid.df,n.trees = 1000)
+a <- mean((yhat.boost1-hitter.test)^2)
+a
+yhat.boost2 <- predict(boost.hitters2,newdata = valid.df,n.trees = 1000)
+b <- mean((yhat.boost2-hitter.test)^2)
+b
+yhat.boost3 <- predict(boost.hitters3,newdata = valid.df,n.trees = 1000)
+c <- mean((yhat.boost3-hitter.test)^2)
+c
+yhat.boost4<- predict(boost.hitters4,newdata = valid.df,n.trees = 1000)
+d <- mean((yhat.boost1-hitter.test)^2)
+d
+yhat.boost5 <- predict(boost.hitters5,newdata = valid.df,n.trees = 1000)
+e <- mean((yhat.boost1-hitter.test)^2)
+e
+MSE_test <- c(a,b,c,d,e)
+MSE_test
+plot(Shrinkage_values,MSE_test,xlab = "Different Shrinkage Values",ylab =
+       "Test Mean Square Errors",main = "Test MSE and shrinkage values")
+```
+9) By altering te shrinkage parameters to different values we see that the most 
+important predictors are CAtBat and CRuns
+
+```{r bagging }
+#Question 10
+bag.hitters <- randomForest(Salary~., data=train.df,
+                           mtry = 19, importance = TRUE) 
+bag.hitters
+
+yhat.bag <- predict(bag.hitters, newdata=valid.df)
+plot(yhat.bag, hitter.test)
+abline(0,1)
+MSE_test <- mean((yhat.bag-hitter.test)^2)
+MSE_test
+```
+10)The MSE_test is 0.24
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
